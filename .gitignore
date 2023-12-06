@@ -1,2 +1,4 @@
 iterations/
 models/
+__pycache__/
+output/
