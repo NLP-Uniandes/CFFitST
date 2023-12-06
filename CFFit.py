@@ -259,14 +259,20 @@ class CFFitST():
             with open("iterations/"+name+"/trazability.json", 'w') as fp:
                 json.dump(self.dic_trazability, fp)
         
-        
-        i_mejor = np.argmax(accuracy_memory)
+        # improvingg if 2 or more equal max take last
+        #i_mejor = np.argmax(accuracy_memory)
+        i_mejor = len(accuracy_memory)-1
+        val_accuracy_mejor = 0
+        for i in range(len(accuracy_memory),0,-1):
+            if accuracy_memory[i] > val_accuracy_mejor:
+                i_mejor = i
+                val_accuracy_mejor = accuracy_memory[i]
         
         self.st_model = SentenceTransformer("iterations/"+name+"/"+str(i_mejor)+".model")
         self.st_model.save(save_path+"/"+name+".model")
         self.dic_trazability[index_chunk] = dic_traz
 
-        with open(save_path+"/"+name+".model/trazability", 'w') as fp:
+        with open(save_path+"/"+name+".model/trazability.json", 'w') as fp:
                 json.dump(self.dic_trazability, fp)
         
 
