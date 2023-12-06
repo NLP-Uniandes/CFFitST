@@ -206,10 +206,10 @@ class CFFitST():
                 start_position = dic_end_position[label_a,label_b]
 
                 # sum_acuracy to distribute variable size
-                if sum_accuracy == 0:
-                    chunk_adaptative_size = chunk_size
+                if (n_pairs - sum_accuracy) == 0:
+                    chunk_adaptative_size = chunk_size / len(pairs)
                 else:
-                    chunk_adaptative_size =( 1 - ( (dic_accuracy[label_a,label_b]) / sum_accuracy ) ) * chunk_size
+                    chunk_adaptative_size =(  (1 - dic_accuracy[label_a,label_b]) / (n_pairs - sum_accuracy) )  * chunk_size
                 size = ( min_chunk_size + chunk_adaptative_size ) * pair_info[label_a, label_b]["size_total"]
                 if start_position + size >  pair_info[label_a, label_b]["size_total"]:
                     end_position = pair_info[label_a, label_b]["size_total"]
@@ -244,16 +244,6 @@ class CFFitST():
             dic_accuracy, gen_accuracy, sum_accuracy, dic_traz = validate_data()
             dic_new_chunks = {}
             dic_new_pos = {}
-            """
-            for label_a, label_b in dic:
-                new_position = int(pair_info[(label_a, label_b)]["adaptive_starting_index"] + pair_info[(label_a, label_b)]["chunk_adaptive_size"])
-                pair_info[(label_a, label_b)]["adaptive_starting_index"] = new_position
-                dic_new_pos[(label_a, label_b)] = new_position
-                new_chunk = int(np.floor(dic[(label_a,label_b)]*chunk_size*pair_info[(label_a, label_b)]["size_total"])) 
-                # se agrega el min chunk_size
-                pair_info[(label_a, label_b)]["chunk_adaptive_size"] = new_chunk 
-                dic_new_chunks[(label_a, label_b)] = pair_info[(label_a, label_b)]["chunk_adaptive_size"]
-            """
         
             self.dic_trazability[index_chunk] = dic_traz
             
