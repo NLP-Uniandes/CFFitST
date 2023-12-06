@@ -284,7 +284,7 @@ class ClassificationHead(nn.Module):
         self.cff_model = cff_model
         self.n_labels = len(cff_model.labels)
         self.fc = nn.Linear(self.cff_model.size_embedding, self.n_labels)
-        self.act = nn.ReLU() 
+        #self.act = nn.ReLU() 
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
@@ -293,7 +293,7 @@ class ClassificationHead(nn.Module):
         x = torch.tensor(x, dtype=torch.float32).to(self.cff_model.device)
         #print(self.fc.weight.data[0].dtype, x.dtype)
         x = self.fc(x)
-        x = self.act(x)
+        #x = self.act(x)
         output = self.softmax(x)
         return output
 
