@@ -263,7 +263,7 @@ class CFFitST():
         #i_mejor = np.argmax(accuracy_memory)
         i_mejor = len(accuracy_memory)-1
         val_accuracy_mejor = 0
-        for i in range(len(accuracy_memory),0,-1):
+        for i in  reversed(range(len(accuracy_memory))):
             if accuracy_memory[i] > val_accuracy_mejor:
                 i_mejor = i
                 val_accuracy_mejor = accuracy_memory[i]
