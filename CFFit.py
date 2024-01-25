@@ -11,37 +11,91 @@ import numpy as np
 from numpy.linalg import norm
 import json
 
-
 class CFFitST():
+    """
+    Custom class for Sentence Transformer few-shot fitting.
+
+    Attributes:
+        st_model (SentenceTransformer): Instance of SentenceTransformer.
+        size_embedding (int): Size of the embedding vector.
+        dic_trazability (dict): Dictionary for traceability information.
+        labels (list): List to store labels.
+        device (str): Computation device, 'cuda' or 'cpu'.
+    """
     def __init__(self, st_model):
+        """
+        Initializes the CFFitST class with a SentenceTransformer model.
+
+        Args:
+            st_model (SentenceTransformer): A SentenceTransformer model instance.
+        """
         self.st_model = st_model
-        self.size_embedding = st_model.encode("xd").shape[0]
-        self.dic_trazability = {}
-        self.labels = []
+        # Determine embedding size from a test encoding
+        self.size_embedding = st_model.encode("test").shape[0]
+        self.dic_trazability = {} # Dictionary for traceability information
+        self.labels = [] # List to store labels
         
-        if torch.cuda.is_available():
-            self.device = 'cuda'
-        else:
-            self.device = 'cpu'
+        # Set device based on CUDA availability
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.st_model.to(self.device)
     
     def from_pretrained(model_pretrained: str):
+        """
+        Creates an instance of CFFitST from a pretrained model.
+
+        Args:
+            model_pretrained (str): The path or identifier of the pretrained model.
+
+        Returns:
+            CFFitST: An instance of the CFFitST class.
+        """
         return CFFitST(SentenceTransformer(model_pretrained))
     
     def to(self, device: str):
+        """
+        Sets the device for computation.
+
+        Args:
+            device (str): The computation device to use ('cuda' or 'cpu').
+        """
         self.device = device
         self.st_model.to(device)
     
     def set_trazability_info(self, dic:dict):
+        """
+        Sets traceability information.
+
+        Args:
+            dic (dict): A dictionary containing traceability information.
+        """
         self.dic_trazability["info"] = dic
 
+
     def encode(self, input_st):
+        """
+        Encodes a single string or a batch of strings.
+
+        Args:
+            input_st (str or list): Input text or list of texts to be encoded.
+
+        Returns:
+            numpy.ndarray: Encoded embeddings of the input text(s).
+        """
         if isinstance(input_st,str):
             return self.st_model.encode(input_st, normalize_embeddings=True)
         else:
             return self.encode_batch(input_st)
     
     def encode_batch(self, list_text):
+        """
+        Encodes a batch of texts.
+
+        Args:
+            list_text (list): A list of texts to be encoded.
+
+        Returns:
+            numpy.ndarray: Encoded embeddings of the input texts.
+        """
         ten = np.zeros((len(list_text),self.size_embedding))
         for i, text in enumerate(list_text):
             ten[i] = self.st_model.encode(text, normalize_embeddings=True)
@@ -51,7 +105,40 @@ class CFFitST():
             epochs=2, validation_data=0.02, chunk_size=0.2,\
             positive_threshold=0.5, negative_threshold=0.5,\
             chunks_reviewed =1, batch_size = 32, min_chunk_size = 0, verbose=True,\
-            save_path = "embeddings", name="model"):
+            save_path = "embeddings", name="model", fixed_sizes=False, learning_rate=0.001):
+        """
+        Fits the Sentence Transformer model to the given data.
+
+        Args:
+            df (pd.DataFrame): Dataframe containing the data.
+            labels (list): List of labels.
+            random_state (int): Random state for reproducibility.
+            column_label (str): Name of the column containing labels.
+            column_sentence (str): Name of the column containing text.
+            epochs (int): Number of epochs for training.
+            validation_data (float): Proportion of data used for validation.
+            chunk_size (float): Size of chunks for processing.
+            positive_threshold (float): Threshold for positive similarity.
+            negative_threshold (float): Threshold for negative similarity.
+            chunks_reviewed (int): Number of chunks to be reviewed.
+            batch_size (int): Size of the batch for training.
+            min_chunk_size (int): Minimum size of a chunk.
+            verbose (bool): Verbosity of training process.
+            save_path (str): Path to save the model.
+            name (str): Name of the model.
+            fixed_sizes (bool): Whether to use fixed sizes for chunks.
+            learning_rate (float): Learning rate used in learning algorithm
+
+        Returns:
+            SentenceTransformer: The trained Sentence Transformer model.
+        """
+
+        # Establish default sizes when fixed sizes
+        if fixed_sizes:
+            if chunk_size < 1:
+                chunk_size = 500
+            if min_chunk_size < 1:
+                min_chunk_size = 100
 
         
         self.labels = labels
@@ -65,26 +152,27 @@ class CFFitST():
                     pairs.append((i,j))
                     
         
-        # Diccionario con dfs de ejemplos
-        ejemplos = {}
+        # Dictionary with dataframes of examples
+        examples = {}
 
-        # Genera ejemplos (negativos) entre los diferentes
+        # Generate negative examples between different labels
         for label_a, label_b in pairs:
-            # n_a * n_b número de combinaciones posibles
+            # n_a * n_b number of possible combinations
             combinations = list(product(df[df["label"]==label_a][column_sentence], df[df["label"]==label_b][column_sentence]))
             result = pd.DataFrame(combinations, columns=[label_a, label_b])
-            # aleatoriedad para que no esten en el orden del dataset (random state para reproducción)
+            # Randomize to not be in dataset order (random state for reproducibility)
             result = result.sample(frac=1, random_state = random_state).reset_index(drop=True)
-            ejemplos[(label_a,label_b)] = result
+            examples[(label_a,label_b)] = result
 
-        # Genera ejemplos (positivos) entre sentencias de la misma clase
+        # Generate positive examples between sentences of the same class
         for label in labels:
             pairs.append((label,label))
-            # Si no son iguales n * n - n
+            # If not equal, it's n * n - n
             combinations = [(a, b) for a, b in product(df[df["label"]==label][column_sentence], df[df["label"]==label][column_sentence]) if a != b]
             result = pd.DataFrame(combinations, columns=[label+"_1", label+"_2"])
+            # Randomize to not be in dataset order (random state for reproducibility)
             result = result.sample(frac=1, random_state = random_state).reset_index(drop=True)
-            ejemplos[(label,label)] = result
+            examples[(label,label)] = result
 
         self.dic_trazability["config"] = { "save_path": save_path, "labels":labels, "epochs":epochs, "validation_data":validation_data,\
                                "chunk_size":chunk_size, "positive_threshold": positive_threshold, "negative_threshold": negative_threshold,\
@@ -92,11 +180,26 @@ class CFFitST():
         
         
         def get_dataloader(df):
-            ejemplos = [ InputExample(texts=[str(data["l1"]), str(data["l2"])], label=float(data["score"])) for i, data in df.iterrows() ]
+            """
+            Create a dataloader from the given dataframe.
+
+            Args:
+                df (DataFrame): The dataframe to create a dataloader from.
+
+            Returns:
+                DataLoader: A DataLoader object for the input examples.
+            """
+            examples = [ InputExample(texts=[str(data["l1"]), str(data["l2"])], label=float(data["score"])) for i, data in df.iterrows() ]
             # mantaining original random seed randomness
-            return DataLoader(ejemplos, shuffle=False, batch_size=batch_size)
+            return DataLoader(examples, shuffle=False, batch_size=batch_size)
         
         def validate_data():
+            """
+            Validate the model using the validation data.
+
+            Returns:
+                tuple: A tuple containing the dictionary of accuracies for each label pair, the general accuracy, the sum of accuracies, and a traceability dictionary.
+            """
             dic_accuracy = {}
             sum_accuracy = 0
             pct_total = 0
@@ -134,47 +237,49 @@ class CFFitST():
             print("accuracy",dic_accuracy)
             return dic_accuracy, sum_accuracy/len(pair_info.keys()), sum_accuracy, dic_traz
             
-        # Información de pares
+        # Pair information
         pair_info = {}
         
 
-        # Inicialización de todos las parejas de labels
+        # Initialization of all label pairs
         for label_a, label_b in pairs:
-            data = ejemplos[label_a, label_b]
-            # cantidad de filas
+            data = examples[label_a, label_b]
+            # Total number of rows
             size_total = data.shape[0]
-            # datos de validacion
+            # Validation data
             val_data = data[0:int(np.floor(size_total*validation_data))]
-            # datos de entrenamiento
+            # Training data
             train_data = data[int(np.floor(size_total*validation_data)):]
-            # score para similitud coseno
+            # Score for cosine similarity
             score = 0
             if( label_a == label_b):
                 score = 1
-            # guardar información en el diccionario
+            # Save information in the dictionary
             pair_info[(label_a,label_b)] = {"size_total" : size_total, "train_data": train_data, "val_data": val_data, "score" : score, "train_size": train_data.shape[0]}
         
 
 
         optimizer = torch.optim.Adam(params=self.st_model.parameters(), lr=0.0001)
-        # Función de error es seno y coseno
+        # Loss function is cosine similarity
         train_loss = losses.CosineSimilarityLoss(self.st_model)
 
-        # Entrenamiento principal
+        #--------------------------------------------------
+        # Main training
+        
         index_chunk = 0
         
-        # Para quedarse con el mejor, pero no mantener todo en memoria
+        # To keep the best one, but not keep everything in memory
         accuracy_memory = []
 
         last_iteration_space = False
 
 
-        # Inicialización de accuracy para pesos
+        # Initialization of accuracy for weights
         dic_accuracy = {}
         for i,j in pairs:
             dic_accuracy[i,j] = 0
 
-        # Inicialización starting positions
+        # Initialization of starting positions
         dic_end_position = {}
         for i,j in pairs:
             dic_end_position[i,j] = 0
@@ -185,38 +290,63 @@ class CFFitST():
         total_pct = n_pairs * chunk_size
 
         reached_maximum = False
+        out_now = False
 
         while index_chunk < chunks_reviewed and not reached_maximum:
 
             print(self.dic_trazability)
 
-            # adquirir los datos y concatenarlos
+             # Acquire the data and concatenate it
             df_train = pd.DataFrame()
             df_train["l1"] = []
             df_train["l2"] = []
             df_train["score"] = []
             
-            # generación de datoloader
+            # Generation of dataloader
             print("Iteration",index_chunk)
             
             df_train = pd.DataFrame()
             
             for label_a, label_b in pair_info:
-                # the start is the ending of the other
+                # The start is the ending of the other
                 start_position = dic_end_position[label_a,label_b]
+                # MODE 1: Eager variable size assignment
+                if fixed_sizes:
+                    if index_chunk == 0:
+                        size = ( chunk_size / len(self.labels) )
+                        end_position = start_position + ( chunk_size / len(self.labels) )
+                    else: 
+                        pct_total_inv =  n_pairs - sum_accuracy
+                        if pct_total_inv == 0:
+                            chunk_adaptative_size = (1/n_pairs) * chunk_size
+                            size = min_chunk_size + chunk_adaptative_size
+                        else:
+                            chunk_adaptative_size = ( (1 - dic_accuracy[label_a,label_b])/pct_total_inv ) * chunk_size
+                            size = min_chunk_size + chunk_adaptative_size
+                            
+                        end_position = start_position + size
 
-                # sum_acuracy to distribute variable size
-                if (n_pairs - sum_accuracy) == 0:
-                    chunk_adaptative_size = chunk_size / len(pairs)
+                        if end_position >  pair_info[label_a, label_b]["size_total"]:
+                            #out_now = True
+                            reached_maximum = True
+                            end_position = pair_info[label_a, label_b]["size_total"]
+                            print("max_reached")
+                # MODE 2: Conservative Size Assignment
                 else:
-                    chunk_adaptative_size =(  (1 - dic_accuracy[label_a,label_b]) / (n_pairs - sum_accuracy) )  * chunk_size
-                size = ( min_chunk_size + chunk_adaptative_size ) * pair_info[label_a, label_b]["size_total"]
-                if start_position + size >  pair_info[label_a, label_b]["size_total"]:
-                    end_position = pair_info[label_a, label_b]["size_total"]
-                    print("max_reached")
-                    reached_maximum = True
-                else:
-                    end_position = start_position + size
+                    # sum_acuracy to distribute variable size
+                    if (n_pairs - sum_accuracy) == 0:
+                        chunk_adaptative_size = chunk_size / len(pairs)
+                    else:
+                        chunk_adaptative_size =(  (1 - dic_accuracy[label_a,label_b]) / (n_pairs - sum_accuracy) )  * chunk_size
+                    size = ( min_chunk_size + chunk_adaptative_size ) * pair_info[label_a, label_b]["size_total"]
+                    if start_position + size >  pair_info[label_a, label_b]["size_total"]:
+                        end_position = pair_info[label_a, label_b]["size_total"]
+                        print("max_reached")
+                        reached_maximum = True
+                    else:
+                        end_position = start_position + size
+
+                
                 dic_end_position[label_a,label_b] = end_position
                 add = pair_info[label_a, label_b]["train_data"][int(start_position):int(end_position)]
                 add.columns = ["l1","l2"]
@@ -225,22 +355,25 @@ class CFFitST():
                 
                 
                 print(label_a,label_b,"st_pos",start_position,"size",size,"end_pos",end_position)
-                
+
+            if out_now:
+                print("OUT_NOW",index_chunk)
+                break
             
-            # random order y carga de datos
+            # Random order and data loading
             df_train = df_train.sample(frac=1, random_state=random_state).reset_index(drop=True)
             
-            # llenar los nulos
+            # Fill null values
             df_train["l1"].fillna("")
             df_train["l2"].fillna("")
             train_dataloader = get_dataloader(df_train)
 
-            # entrenamiento
+            # Training with SentenceTransformer method using customized examples
             self.st_model.fit(train_objectives=[(train_dataloader, train_loss)], 
                                epochs=epochs,
                                show_progress_bar=verbose)
             
-            # evaluacion de modelo
+            # Model evaluation
             dic_accuracy, gen_accuracy, sum_accuracy, dic_traz = validate_data()
             dic_new_chunks = {}
             dic_new_pos = {}
@@ -259,11 +392,11 @@ class CFFitST():
             with open("iterations/"+name+"/trazability.json", 'w') as fp:
                 json.dump(self.dic_trazability, fp)
         
-        # improvingg if 2 or more equal max take last
-        #i_mejor = np.argmax(accuracy_memory)
+        # Improving if 2 or more max values are equal, take the last
+        #i_mejor = np.argmax(accuracy_memory)   
         i_mejor = len(accuracy_memory)-1
         val_accuracy_mejor = 0
-        for i in range(len(accuracy_memory),0,-1):
+        for i in  reversed(range(len(accuracy_memory))):
             if accuracy_memory[i] > val_accuracy_mejor:
                 i_mejor = i
                 val_accuracy_mejor = accuracy_memory[i]
@@ -284,8 +417,22 @@ import torch.optim as optim
 import tqdm
 
 class ClassificationHead(nn.Module):
+    """
+    A classification head for the Sentence Transformer model.
 
+    Attributes:
+        cff_model (CFFitST): An instance of CFFitST class.
+        n_labels (int): Number of labels in the classification task.
+        fc (nn.Linear): Fully connected layer.
+        softmax (nn.Softmax): Softmax layer.
+    """
     def __init__(self, cff_model):
+        """
+        Initializes the ClassificationHead with a CFFitST model.
+
+        Args:
+            cff_model (CFFitST): An instance of CFFitST.
+        """
         super(ClassificationHead, self).__init__()
         self.cff_model = cff_model
         self.n_labels = len(cff_model.labels)
@@ -294,6 +441,15 @@ class ClassificationHead(nn.Module):
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
+        """
+        Forward pass for the classification head.
+
+        Args:
+            x (torch.Tensor): Input tensor.
+
+        Returns:
+            torch.Tensor: Output tensor after classification.
+        """
         x = self.cff_model.encode(x)
         
         x = torch.tensor(x, dtype=torch.float32).to(self.cff_model.device)
@@ -304,14 +460,33 @@ class ClassificationHead(nn.Module):
         return output
 
     def predict(self, x):
-        #with torch.no_grad():
+        """
+        Predicts the class labels for the input data.
+
+        Args:
+            x (list or str): Input text or list of texts.
+
+        Returns:
+            numpy.ndarray: Predicted class probabilities.
+        """
         return self.forward(x).cpu().detach().numpy()
 
     
     def fit(self,x, y, epochs=20, batch_size=16):
+        """
+        Fits the classification head to the provided data.
 
+        Args:
+            x (list): List of input texts.
+            y (list): List of target labels.
+            epochs (int): Number of epochs for training.
+            batch_size (int): Batch size for training.
+
+        Returns:
+            None
+        """
         loss_fn = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(self.parameters(), lr=0.001)
+        optimizer = optim.Adam(self.parameters(), lr=learning_rate)
         y = torch.tensor(y).to(self.cff_model.device)
         batches_per_epoch = len(x) // batch_size
  
@@ -331,21 +506,3 @@ class ClassificationHead(nn.Module):
                     loss.backward()
                     # update weights
                     optimizer.step()
-
-
-
-
-
-
-    
-
-    
-
-
-
-        
-        
-    
-
-        
-
