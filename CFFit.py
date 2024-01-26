@@ -127,8 +127,6 @@ class CFFitST():
             save_path (str): Path to save the model.
             name (str): Name of the model.
             fixed_sizes (bool): Whether to use fixed sizes for chunks.
-            learning_rate (float): Learning rate used in learning algorithm
-
         Returns:
             SentenceTransformer: The trained Sentence Transformer model.
         """
@@ -208,7 +206,7 @@ class CFFitST():
             for labels in pair_info:
                 cols = pair_info[labels]["val_data"].columns
                 total = pair_info[labels]["val_data"].shape[0]
-                correctas = 0
+                best_spas = 0
                 label = pair_info[labels]["score"]
                 size = pair_info[labels]["val_data"].shape[0]
                 print("Validate data ",labels,"l",label,"s:",size,"\n[",end="")
@@ -221,18 +219,18 @@ class CFFitST():
                     if(label == 0):
                         #print(label,cos_sim,"<=",negative_threshold)
                         if(cos_sim<=negative_threshold):
-                            correctas+=1
+                            best_spas+=1
                     elif(label == 1):
                         #print(label,cos_sim,">=",positive_threshold)
                         if(cos_sim>=positive_threshold):
-                            correctas+=1
+                            best_spas+=1
                     if( i % int(np.floor(size/10)) == 0):
                         print("=",end="")
-                dic_accuracy[(labels[0],labels[1])] = correctas/total
-                dic_traz[str(labels[0]+"_"+labels[1])] = correctas/total
-                sum_accuracy += correctas/total
-                pct_total += 1 - correctas/total
-                print("]",correctas,total,correctas/total)
+                dic_accuracy[(labels[0],labels[1])] = best_spas/total
+                dic_traz[str(labels[0]+"_"+labels[1])] = best_spas/total
+                sum_accuracy += best_spas/total
+                pct_total += 1 - best_spas/total
+                print("]",best_spas,total,best_spas/total)
                 
             print("accuracy",dic_accuracy)
             return dic_accuracy, sum_accuracy/len(pair_info.keys()), sum_accuracy, dic_traz
@@ -393,15 +391,15 @@ class CFFitST():
                 json.dump(self.dic_trazability, fp)
         
         # Improving if 2 or more max values are equal, take the last
-        #i_mejor = np.argmax(accuracy_memory)   
-        i_mejor = len(accuracy_memory)-1
-        val_accuracy_mejor = 0
+        #i_best_sp = np.argmax(accuracy_memory)   
+        i_best_sp = len(accuracy_memory)-1
+        val_accuracy_best_sp = 0
         for i in  reversed(range(len(accuracy_memory))):
-            if accuracy_memory[i] > val_accuracy_mejor:
-                i_mejor = i
-                val_accuracy_mejor = accuracy_memory[i]
+            if accuracy_memory[i] > val_accuracy_best_sp:
+                i_best_sp = i
+                val_accuracy_best_sp = accuracy_memory[i]
         
-        self.st_model = SentenceTransformer("iterations/"+name+"/"+str(i_mejor)+".model")
+        self.st_model = SentenceTransformer("iterations/"+name+"/"+str(i_best_sp)+".model")
         self.st_model.save(save_path+"/"+name+".model")
         self.dic_trazability[index_chunk] = dic_traz
 
@@ -472,7 +470,7 @@ class ClassificationHead(nn.Module):
         return self.forward(x).cpu().detach().numpy()
 
     
-    def fit(self,x, y, epochs=20, batch_size=16):
+    def fit(self,x, y, epochs=20, batch_size=16, learning_rate=0.001):
         """
         Fits the classification head to the provided data.
 
@@ -481,7 +479,7 @@ class ClassificationHead(nn.Module):
             y (list): List of target labels.
             epochs (int): Number of epochs for training.
             batch_size (int): Batch size for training.
-
+            learning_rate (float): Learning rate used in learning algorithm.
         Returns:
             None
         """
